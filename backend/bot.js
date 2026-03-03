@@ -10,7 +10,7 @@ class TikTokBot {
         this.isRunning = false;
     }
 
-    async init() {
+    async init(requireSession = true) {
         if (this.browser) return;
         try {
             this.browser = await puppeteer.launch({
@@ -20,15 +20,17 @@ class TikTokBot {
             this.page = await this.browser.newPage();
             await this.page.setViewport({ width: 1280, height: 800 });
 
-            // Set Session ID cookie
-            await this.page.goto('https://www.tiktok.com', { waitUntil: 'networkidle2', timeout: 30000 });
-            await this.page.setCookie({
-                name: 'sessionid',
-                value: this.sessionId,
-                domain: '.tiktok.com',
-                path: '/'
-            });
-            await this.page.reload({ waitUntil: 'networkidle2' });
+            if (requireSession && this.sessionId) {
+                // Set Session ID cookie
+                await this.page.goto('https://www.tiktok.com', { waitUntil: 'networkidle2', timeout: 30000 });
+                await this.page.setCookie({
+                    name: 'sessionid',
+                    value: this.sessionId,
+                    domain: '.tiktok.com',
+                    path: '/'
+                });
+                await this.page.reload({ waitUntil: 'networkidle2' });
+            }
         } catch (e) {
             console.error(`Initialization failed for ${this.username}:`, e.message);
             await this.stop();
@@ -145,6 +147,19 @@ const botManager = {
             return false;
         } catch (e) {
             return false;
+        }
+    },
+
+    async getProfileStats(username) {
+        const bot = new TikTokBot(0, username, null);
+        try {
+            await bot.init(false); // Init without session
+            const data = await bot.getProfileData();
+            await bot.stop();
+            return data;
+        } catch (e) {
+            if (bot) await bot.stop();
+            return null;
         }
     },
 

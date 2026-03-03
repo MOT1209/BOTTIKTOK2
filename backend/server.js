@@ -51,59 +51,51 @@ const authenticateToken = (req, res, next) => {
 };
 
 // ─── Auth Routes ───
-app.post('/auth/register', async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ detail: 'Email and password required' });
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    db.run('INSERT INTO users (email, password) VALUES (?, ?)', [email, hashedPassword], function (err) {
-        if (err) return res.status(400).json({ detail: 'Email already registered' });
-        const userId = this.lastID;
-        db.run('INSERT INTO user_settings (user_id) VALUES (?)', [userId]);
-        const token = jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: '30d' });
-        res.json({ access_token: token, user_id: userId });
-    });
-});
-
-app.post('/auth/login', (req, res) => {
-    const { email, password } = req.body;
-    db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
-        if (err || !user || !user.password || !(await bcrypt.compare(password, user.password))) {
-            return res.status(400).json({ detail: 'Incorrect email or password' });
-        }
-        const token = jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '30d' });
-        res.json({ access_token: token, user_id: user.id });
-    });
-});
-
-// ─── AUTH: SIMPLE TIKTOK LOGIN ───
+// ─── AUTH: REAL TIKTOK LOGIN ───
 app.post('/auth/tiktok', async (req, res) => {
-    const { username } = req.body;
+    let { username } = req.body;
     if (!username) return res.status(400).json({ detail: 'Username required' });
 
-    const cleanUser = username.replace('@', '').trim();
-    const email = `${cleanUser}@tiktok.local`; // Dummy email for legacy compatibility
+    username = username.replace('@', '').trim();
+    const email = `${username}@tiktok.local`;
 
-    db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
-        if (err) return res.status(500).json({ detail: err.message });
+    try {
+        const botManager = require('./bot');
+        console.log(`Verifying TikTok user: @${username}...`);
+        const stats = await botManager.getProfileStats(username);
 
-        if (user) {
-            const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET);
-            return res.json({ token, user: { id: user.id, email: user.email, coins: user.coins } });
-        } else {
-            // Register new user
-            db.run('INSERT INTO users (email, coins) VALUES (?, ?)', [email, 100], function (err) {
-                if (err) return res.status(500).json({ detail: err.message });
-                const userId = this.lastID;
-
-                // Auto-link primary account
-                db.run('INSERT INTO tiktok_accounts (user_id, username, status) VALUES (?, ?, ?)', [userId, cleanUser, 'active']);
-
-                const token = jwt.sign({ sub: userId, email }, JWT_SECRET);
-                res.json({ token, user: { id: userId, email, coins: 100 } });
-            });
+        if (!stats) {
+            return res.status(404).json({ detail: `تعذر العثور على حساب @${username} الحقيقي على تيك توك. تأكد من الاسم.` });
         }
-    });
+
+        db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
+            if (err) return res.status(500).json({ detail: err.message });
+
+            if (user) {
+                // Update stats
+                db.run('UPDATE tiktok_accounts SET followers = ?, likes = ? WHERE user_id = ? AND username = ?',
+                    [stats.followers, stats.likes, user.id, username]);
+
+                const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET);
+                return res.json({ token, user: { id: user.id, username, coins: user.coins, stats } });
+            } else {
+                // Register new user
+                db.run('INSERT INTO users (email, coins) VALUES (?, ?)', [email, 100], function (err) {
+                    if (err) return res.status(500).json({ detail: err.message });
+                    const userId = this.lastID;
+
+                    // Link primary account with real stats
+                    db.run('INSERT INTO tiktok_accounts (user_id, username, followers, likes, status) VALUES (?, ?, ?, ?, ?)',
+                        [userId, username, stats.followers, stats.likes, 'active']);
+
+                    const token = jwt.sign({ sub: userId, email }, JWT_SECRET);
+                    res.json({ token, user: { id: userId, username, coins: 100, stats } });
+                });
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ detail: 'Verification error: ' + e.message });
+    }
 });
 
 // ─── User Profile ───
@@ -111,10 +103,13 @@ app.get('/me', authenticateToken, (req, res) => {
     db.get('SELECT id, email, coins, created_at FROM users WHERE id = ?', [req.user.sub], (err, user) => {
         if (err || !user) return res.status(404).json({ detail: 'User not found' });
 
-        db.all('SELECT id, username, status, followers, likes, views FROM tiktok_accounts WHERE user_id = ?', [req.user.sub], (err2, accounts) => {
+        db.all('SELECT id, username, status, followers, likes FROM tiktok_accounts WHERE user_id = ?', [req.user.sub], (err2, accounts) => {
             db.get('SELECT COUNT(*) as total FROM follow_tasks WHERE doer_user_id = ?', [req.user.sub], (err3, taskCount) => {
+                const primaryAccount = accounts && accounts[0] ? accounts[0] : null;
                 res.json({
                     ...user,
+                    username: primaryAccount ? primaryAccount.username : user.email.split('@')[0],
+                    stats: primaryAccount ? { followers: primaryAccount.followers, likes: primaryAccount.likes } : { followers: '0', likes: '0' },
                     accounts: accounts || [],
                     totalTasksDone: taskCount ? taskCount.total : 0
                 });

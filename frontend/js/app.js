@@ -63,29 +63,42 @@ function renderLogin(c) {
 function renderHome(c) {
     document.getElementById('navbar').style.display = 'flex';
     const coins = user ? user.coins : 0;
-    const accs = user ? user.accounts.length : 0;
-    const tasks = user ? user.totalTasksDone : 0;
+    const accs = user ? user.accounts ? user.accounts.length : 0 : 0;
+    const tasks = user ? user.totalTasksDone || 0 : 0;
+    const stats = user ? user.stats || { followers: '0', likes: '0' } : { followers: '0', likes: '0' };
 
     c.innerHTML = `
         <div class="h-full overflow-y-auto no-scroll p-6 pt-4 pb-24 fade-in">
-            <div class="mb-8">
-                <h1 class="text-3xl font-black">مرحباً 👋</h1>
-                <p class="text-white/30 text-sm">لوحة التحكم الخاصة بك</p>
+            <div class="mb-8 flex justify-between items-end">
+                <div>
+                    <h1 class="text-3xl font-black">مرحباً 👋</h1>
+                    <p class="text-white/30 text-xs mt-1">@${user ? user.username : 'حساب'}</p>
+                </div>
+                <div class="text-[10px] bg-white/5 px-3 py-1.5 rounded-full border border-white/10 text-white/40 font-bold">
+                    <i class="fa-solid fa-clock mr-1"></i> ${new Date().toLocaleDateString('ar-EG')}
+                </div>
             </div>
 
             <!-- Stats Cards -->
-            <div class="grid grid-cols-3 gap-3 mb-8">
-                <div class="bg-card rounded-3xl p-5 text-center border border-white/5">
-                    <div class="text-2xl font-black text-cyan">${coins}</div>
-                    <div class="text-[9px] text-white/30 mt-1 uppercase tracking-wider">نقاط</div>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-card rounded-3xl p-5 border border-white/5 flex flex-col items-center">
+                    <div class="text-2xl font-black text-cyan">${stats.followers}</div>
+                    <div class="text-[10px] text-white/30 uppercase mt-1">متابع</div>
                 </div>
-                <div class="bg-card rounded-3xl p-5 text-center border border-white/5">
-                    <div class="text-2xl font-black text-pink">${accs}</div>
-                    <div class="text-[9px] text-white/30 mt-1 uppercase tracking-wider">حسابات</div>
+                <div class="bg-card rounded-3xl p-5 border border-white/5 flex flex-col items-center">
+                    <div class="text-2xl font-black text-pink">${stats.likes}</div>
+                    <div class="text-[10px] text-white/30 uppercase mt-1">إعجاب</div>
                 </div>
-                <div class="bg-card rounded-3xl p-5 text-center border border-white/5">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-8">
+                <div class="bg-card rounded-3xl p-5 border border-white/5 flex flex-col items-center">
+                    <div class="text-2xl font-black text-yellow-500">${coins}</div>
+                    <div class="text-[10px] text-white/30 uppercase mt-1">نقاطك</div>
+                </div>
+                <div class="bg-card rounded-3xl p-5 border border-white/5 flex flex-col items-center">
                     <div class="text-2xl font-black">${tasks}</div>
-                    <div class="text-[9px] text-white/30 mt-1 uppercase tracking-wider">مهام</div>
+                    <div class="text-[10px] text-white/30 uppercase mt-1">المهام</div>
                 </div>
             </div>
 
@@ -293,8 +306,10 @@ async function handleTikTokLogin() {
     if (!username) return toast('يرجى إدخال اسم المستخدم', false);
 
     const btn = document.getElementById('login-btn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري الدخول...';
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري التحقق من الحساب...';
     btn.disabled = true;
+    toast("جاري محاولة الاتصال بـ TikTok...", true);
 
     try {
         const res = await fetch('/auth/tiktok', {
@@ -307,11 +322,12 @@ async function handleTikTokLogin() {
 
         localStorage.setItem('tikboost_token', data.token);
         user = data.user;
-        toast('تم الدخول بنجاح! 🚀');
+        await loadUser();
+        toast(`أهلاً بك @${user.username || ''}! ✨`);
         go('home');
     } catch (e) {
         toast(e.message, false);
-        btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> دخول سريع';
+        btn.innerHTML = originalText;
         btn.disabled = false;
     }
 }
@@ -368,7 +384,7 @@ async function doFollow(targetUsername, btnEl) {
                 btnEl.onclick = null;
                 btnEl.className = 'px-5 py-3 bg-green-500/20 text-green-400 font-black text-[10px] rounded-xl cursor-default';
                 toast("تمت المتابعة! +10 نقاط 💰");
-                updateStats(); // Update UI coins
+                go('home'); // Refresh UI with new coins
             } else {
                 btnEl.innerHTML = 'إعادة التحقق';
                 btnEl.disabled = false;
