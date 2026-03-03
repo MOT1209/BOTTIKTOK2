@@ -76,6 +76,36 @@ app.post('/auth/login', (req, res) => {
     });
 });
 
+// ─── AUTH: SIMPLE TIKTOK LOGIN ───
+app.post('/auth/tiktok', async (req, res) => {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ detail: 'Username required' });
+
+    const cleanUser = username.replace('@', '').trim();
+    const email = `${cleanUser}@tiktok.local`; // Dummy email for legacy compatibility
+
+    db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
+        if (err) return res.status(500).json({ detail: err.message });
+
+        if (user) {
+            const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET);
+            return res.json({ token, user: { id: user.id, email: user.email, coins: user.coins } });
+        } else {
+            // Register new user
+            db.run('INSERT INTO users (email, coins) VALUES (?, ?)', [email, 100], function (err) {
+                if (err) return res.status(500).json({ detail: err.message });
+                const userId = this.lastID;
+
+                // Auto-link primary account
+                db.run('INSERT INTO tiktok_accounts (user_id, username, status) VALUES (?, ?, ?)', [userId, cleanUser, 'active']);
+
+                const token = jwt.sign({ sub: userId, email }, JWT_SECRET);
+                res.json({ token, user: { id: userId, email, coins: 100 } });
+            });
+        }
+    });
+});
+
 // ─── User Profile ───
 app.get('/me', authenticateToken, (req, res) => {
     db.get('SELECT id, email, coins, created_at FROM users WHERE id = ?', [req.user.sub], (err, user) => {
