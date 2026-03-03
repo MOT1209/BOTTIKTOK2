@@ -19,9 +19,17 @@ const db = new sqlite3.Database(dbPath);
 
 // Initialize database
 const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
-db.exec(schema, (err) => {
-    if (err) console.error('Database Init Error:', err);
-    else console.log('✅ Database initialized successfully.');
+const queries = schema.split(';').filter(q => q.trim() !== '');
+
+db.serialize(() => {
+    queries.forEach(query => {
+        db.run(query, (err) => {
+            if (err && !err.message.includes('already exists')) {
+                console.error('SQL Error:', err.message);
+            }
+        });
+    });
+    console.log('✅ Database processed successfully.');
 });
 
 // Middleware

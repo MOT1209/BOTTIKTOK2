@@ -27,9 +27,8 @@ CREATE TABLE IF NOT EXISTS tiktok_accounts (
 CREATE TABLE IF NOT EXISTS follow_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     doer_user_id INTEGER NOT NULL,
-    doer_account_id INTEGER- [x] Verification
-    - [x] Server starts successfully on port 8000
-    - [x] Uploaded modifications to GitHub repository `BOTTIKTOK2`
+    doer_account_id INTEGER NOT NULL,
+    target_username TEXT NOT NULL,
     reward INTEGER DEFAULT 10,
     status TEXT DEFAULT 'completed',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
