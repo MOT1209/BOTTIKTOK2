@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS tiktok_accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     username TEXT NOT NULL,
-    session_id TEXT NOT NULL,
+    session_id TEXT,
     status TEXT DEFAULT 'active',
     followers INTEGER DEFAULT 0,
     likes INTEGER DEFAULT 0,

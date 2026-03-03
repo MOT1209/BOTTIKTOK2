@@ -335,14 +335,44 @@ async function linkAccount() {
 
 async function doFollow(targetUsername, btnEl) {
     if (!user || user.accounts.length === 0) return toast('اربط حساب أولاً', false);
+    const account = user.accounts[0];
 
+    // If no session_id, it's manual mode
+    if (!account.session_id) {
+        toast("جاري فتح حساب @" + targetUsername);
+        window.open(`https://www.tiktok.com/@${targetUsername}`, '_blank');
+
+        btnEl.innerHTML = 'تأكيد المتابعة';
+        btnEl.className = 'px-5 py-3 bg-yellow-500 text-black font-black text-xs rounded-xl';
+        btnEl.onclick = async () => {
+            btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            // In a real app, the server would verify this now. 
+            // For this version, we'll grant points upon manual confirmation.
+            try {
+                // We use a specific endpoint or simulation for manual credit
+                // For simplicity, we call the earn endpoint but it works differently on server for manual
+                const result = await API.earnFollow(account.id, targetUsername);
+                if (result.success) {
+                    user.coins = result.newCoins;
+                    btnEl.innerHTML = '✓ تم';
+                    btnEl.onclick = null;
+                    btnEl.className = 'px-5 py-3 bg-green-500/20 text-green-400 font-black text-xs rounded-xl cursor-default';
+                    toast("تمت المتابعة! +10 نقاط");
+                    go('earn');
+                }
+            } catch (e) {
+                toast(e.message, false);
+            }
+        };
+        return;
+    }
+
+    // Auto Mode (with session_id)
     btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
     btnEl.disabled = true;
 
     try {
-        const accountId = user.accounts[0].id;
-        const result = await API.earnFollow(accountId, targetUsername);
-
+        const result = await API.earnFollow(account.id, targetUsername);
         if (result.success) {
             user.coins = result.newCoins;
             btnEl.innerHTML = '✓ تم';
@@ -350,11 +380,13 @@ async function doFollow(targetUsername, btnEl) {
             toast(result.message);
         } else {
             btnEl.innerHTML = 'فشل';
+            btnEl.disabled = false;
             btnEl.className = 'px-5 py-3 bg-red-500/20 text-red-400 font-black text-xs rounded-xl';
             toast(result.message, false);
         }
     } catch (e) {
         btnEl.innerHTML = 'خطأ';
+        btnEl.disabled = false;
         toast(e.message, false);
     }
 }

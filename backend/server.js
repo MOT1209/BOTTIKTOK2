@@ -103,32 +103,34 @@ app.get('/accounts', authenticateToken, (req, res) => {
 
 app.post('/accounts/add', authenticateToken, async (req, res) => {
     const { username, session_id } = req.body;
-    if (!username || !session_id) return res.status(400).json({ detail: 'Username and session_id required' });
+    if (!username) return res.status(400).json({ detail: 'Username required' });
 
     const cleanUsername = username.replace('@', '');
 
-    // Try to fetch real profile data
+    // Try to fetch real profile data if session_id is provided, otherwise save basic
     let realStats = { followers: 0, likes: 0, following: 0 };
-    try {
-        const botManager = require('./bot');
-        const TikTokBot = botManager.TikTokBot || require('./bot').TikTokBot;
-        if (TikTokBot) {
-            const tempBot = new TikTokBot('temp', cleanUsername, session_id);
-            const stats = await tempBot.getProfileData();
-            if (stats) realStats = stats;
-            await tempBot.stop();
+    if (session_id) {
+        try {
+            const botManager = require('./bot');
+            const TikTokBot = botManager.TikTokBot || require('./bot').TikTokBot;
+            if (TikTokBot) {
+                const tempBot = new TikTokBot('temp', cleanUsername, session_id);
+                const stats = await tempBot.getProfileData();
+                if (stats) realStats = stats;
+                await tempBot.stop();
+            }
+        } catch (e) {
+            console.warn('⚠️ Could not fetch real stats:', e.message);
         }
-    } catch (e) {
-        console.warn('⚠️ Could not fetch real stats:', e.message);
     }
 
     db.run('INSERT INTO tiktok_accounts (user_id, username, session_id, status, followers, likes) VALUES (?, ?, ?, ?, ?, ?)',
-        [req.user.sub, cleanUsername, session_id, 'active', realStats.followers || 0, realStats.likes || 0],
+        [req.user.sub, cleanUsername, session_id || null, 'active', realStats.followers || 0, realStats.likes || 0],
         function (err) {
             if (err) return res.status(500).json({ detail: err.message });
             res.json({
                 id: this.lastID, username: cleanUsername, status: 'active',
-                followers: realStats.followers, likes: realStats.likes, following: realStats.following
+                followers: realStats.followers, likes: realStats.likes, manualMode: !session_id
             });
         });
 });
@@ -138,37 +140,47 @@ app.post('/tasks/earn', authenticateToken, async (req, res) => {
     const { account_id, target_username } = req.body;
     if (!account_id || !target_username) return res.status(400).json({ detail: 'account_id and target_username required' });
 
-    // Verify account belongs to user
     db.get('SELECT * FROM tiktok_accounts WHERE id = ? AND user_id = ?', [account_id, req.user.sub], async (err, account) => {
         if (err || !account) return res.status(404).json({ detail: 'Account not found' });
 
-        const reward = 10; // coins per follow
+        const reward = 10;
 
-        try {
-            // Use bot to actually follow
-            const botManager = require('./bot');
-            const success = await botManager.startBot(account.id, account.username, account.session_id, 'follow', target_username);
+        // If session_id exists, try auto-follow. Otherwise, it's manual mode
+        if (account.session_id) {
+            try {
+                const botManager = require('./bot');
+                const success = await botManager.startBot(account.id, account.username, account.session_id, 'follow', target_username);
 
-            if (success) {
-                // Add coins to user
-                db.run('UPDATE users SET coins = coins + ? WHERE id = ?', [reward, req.user.sub]);
-                // Log the task
-                db.run('INSERT INTO follow_tasks (doer_user_id, doer_account_id, target_username, reward) VALUES (?, ?, ?, ?)',
-                    [req.user.sub, account_id, target_username, reward]);
-
-                // Get updated coins
-                db.get('SELECT coins FROM users WHERE id = ?', [req.user.sub], (err, user) => {
-                    res.json({ success: true, reward, newCoins: user ? user.coins : 0, message: `تمت متابعة @${target_username} بنجاح! +${reward} عملة` });
-                });
-            } else {
-                res.json({ success: false, reward: 0, message: 'فشل في المتابعة، حاول مرة أخرى' });
+                if (success) {
+                    await awardCoins(req.user.sub, account_id, target_username, reward, res);
+                } else {
+                    res.json({ success: false, message: 'فشل البوت في المتابعة التلقائية' });
+                }
+            } catch (e) {
+                res.status(500).json({ detail: 'Bot error: ' + e.message });
             }
-        } catch (e) {
-            console.error('Earn task error:', e.message);
-            res.status(500).json({ detail: 'Bot error: ' + e.message });
+        } else {
+            // Manual Mode: In a real production app, you'd verify this with a separate scraper bot.
+            // For now, we trust the user's confirmation as requested for easy setup.
+            await awardCoins(req.user.sub, account_id, target_username, reward, res);
         }
     });
 });
+
+async function awardCoins(userId, accountId, targetUsername, reward, res) {
+    db.run('UPDATE users SET coins = coins + ? WHERE id = ?', [reward, userId]);
+    db.run('INSERT INTO follow_tasks (doer_user_id, doer_account_id, target_username, reward) VALUES (?, ?, ?, ?)',
+        [userId, accountId, targetUsername, reward]);
+
+    db.get('SELECT coins FROM users WHERE id = ?', [userId], (err, user) => {
+        res.json({
+            success: true,
+            reward,
+            newCoins: user ? user.coins : 0,
+            message: `تم منحك ${reward} نقطة لمتابعة @${targetUsername}`
+        });
+    });
+}
 
 // ─── REDEEM: Spend coins to get real followers ───
 app.post('/tasks/redeem', authenticateToken, (req, res) => {

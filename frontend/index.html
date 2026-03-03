@@ -75,14 +75,24 @@
             class="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] hidden items-center justify-center p-8">
             <div class="w-full max-w-sm space-y-6 fade-in">
                 <h2 class="text-2xl font-black text-center">ربط حساب تيك توك 🔗</h2>
-                <p class="text-white/40 text-xs text-center">أدخل اسم المستخدم و Session ID من كوكيز تيك توك</p>
+                <p class="text-white/40 text-[10px] text-center">أدخل @اسم_المستخدم فقط للبدء سريعاً.<br />(الـ Session
+                    ID اختياري للأتمتة الكاملة)</p>
                 <div class="space-y-4">
                     <input id="m-user" type="text"
-                        class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-cyan transition text-sm"
+                        class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-cyan transition text-sm text-center"
                         placeholder="@username">
-                    <input id="m-sid" type="text"
-                        class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-cyan transition text-[11px] font-mono"
-                        placeholder="sessionid cookie value">
+                    <details class="group bg-white/5 rounded-2xl border border-white/5">
+                        <summary
+                            class="list-none p-4 text-[10px] text-white/30 cursor-pointer flex justify-between items-center">
+                            <span>خيارات متقدمة (Session ID)</span>
+                            <i class="fa-solid fa-chevron-down transition-transform group-open:rotate-180"></i>
+                        </summary>
+                        <div class="px-4 pb-4">
+                            <input id="m-sid" type="text"
+                                class="w-full bg-black/40 border border-white/10 p-3 rounded-xl outline-none focus:border-cyan transition text-[10px] font-mono"
+                                placeholder="Paste sessionid cookie here...">
+                        </div>
+                    </details>
                 </div>
                 <div class="flex gap-3">
                     <button onclick="closeModal()"
