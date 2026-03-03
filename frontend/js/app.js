@@ -43,17 +43,18 @@ function renderLogin(c) {
                 <i class="fa-brands fa-tiktok text-5xl text-white"></i>
             </div>
             <h1 class="text-4xl font-black mb-2">TikBoost</h1>
-            <p class="text-white/30 text-sm mb-10 text-center">تابع حسابات حقيقية → اكسب نقاط → احصل على متابعين حقيقيين</p>
+            <p class="text-white/30 text-sm mb-10 text-center">ادخل اسم مستخدم تيك توك الخاص بك للمتابعة</p>
             
             <div class="w-full space-y-3 mb-6">
-                <input id="l-email" type="email" class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-cyan transition text-sm" placeholder="البريد الإلكتروني">
-                <input id="l-pass" type="password" class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-cyan transition text-sm" placeholder="كلمة المرور">
+                <div class="relative">
+                    <span class="absolute left-5 top-1/2 -translate-y-1/2 text-white/40 font-bold">@</span>
+                    <input id="l-username" type="text" class="w-full bg-white/5 border border-white/10 p-5 pl-10 rounded-2xl outline-none focus:border-cyan transition text-lg font-bold" placeholder="username">
+                </div>
             </div>
             
-            <button onclick="doLogin()" id="login-btn" class="w-full py-4 bg-white text-black font-black rounded-2xl text-sm mb-3 active:scale-95 transition">
-                <i class="fa-solid fa-right-to-bracket ml-2"></i> دخول
+            <button onclick="handleTikTokLogin()" id="login-btn" class="w-full py-4 bg-white text-black font-black rounded-2xl text-sm mb-3 active:scale-95 transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-right-to-bracket"></i> دخول سريع
             </button>
-            <button onclick="doRegister()" class="text-white/30 text-xs underline">إنشاء حساب جديد</button>
         </div>
     `;
 }
@@ -280,121 +281,139 @@ async function doLogin() {
         const data = await API.login(email, pass);
         localStorage.setItem('tikboost_token', data.access_token);
         await loadUser();
-        // ─── LOGIN & AUTH ───
-        async function handleTikTokLogin() {
-            const username = document.getElementById('login-username').value;
-            if (!username) return toast('يرجى إدخال اسم المستخدم', false);
+    } catch (e) {
+        toast(e.message, false);
+        btn.innerHTML = 'تسجيل الدخول';
+    }
+}
 
-            try {
-                const data = await API.post('/auth/tiktok', { username });
-                localStorage.setItem('tikboost_token', data.token);
-                user = data.user;
-                await syncUser(); // Assuming syncUser is the new loadUser
-                toast('تم الدخول بنجاح! 🚀');
-                router('home'); // Assuming router is the new go
-            } catch (e) {
-                toast('خطأ في الدخول: ' + e.message, false);
-            }
-        }
+// ─── LOGIN & AUTH ───
+async function handleTikTokLogin() {
+    const username = document.getElementById('l-username').value;
+    if (!username) return toast('يرجى إدخال اسم المستخدم', false);
 
-        function doLogout() {
-            localStorage.removeItem('tikboost_token');
-            user = null; accounts = [];
-            go('login');
-        }
+    const btn = document.getElementById('login-btn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري الدخول...';
+    btn.disabled = true;
 
-        function openModal() { document.getElementById('modal').style.display = 'flex'; }
-        function closeModal() { document.getElementById('modal').style.display = 'none'; }
+    try {
+        const res = await fetch('/auth/tiktok', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'فشل الدخول');
 
-        async function linkAccount() {
-            const username = document.getElementById('m-user').value.replace('@', '');
-            const sid = document.getElementById('m-sid').value;
-            if (!username || !sid) return toast('أدخل جميع البيانات', false);
+        localStorage.setItem('tikboost_token', data.token);
+        user = data.user;
+        toast('تم الدخول بنجاح! 🚀');
+        go('home');
+    } catch (e) {
+        toast(e.message, false);
+        btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> دخول سريع';
+        btn.disabled = false;
+    }
+}
 
-            const btn = document.getElementById('link-btn');
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري الربط...';
-            try {
-                await API.addAccount(username, sid);
-                await loadUser();
-                closeModal();
-                toast(`تم ربط @${username} بنجاح!`);
-                go('profile');
-            } catch (e) {
-                toast('فشل الربط: ' + e.message, false);
-            } finally {
-                btn.innerHTML = 'ربط الآن';
-            }
-        }
+function doLogout() {
+    localStorage.removeItem('tikboost_token');
+    user = null; accounts = [];
+    go('login');
+}
 
-        async function doFollow(targetUsername, btnEl) {
-            if (!user || user.accounts.length === 0) return toast('اربط حساب أولاً', false);
-            const account = user.accounts[0];
+function openModal() { document.getElementById('modal').style.display = 'flex'; }
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
-            // Direct Manual Follow Flow
-            toast("جاري فتح حساب @" + targetUsername);
-            window.open(`https://www.tiktok.com/@${targetUsername}`, '_blank');
+async function linkAccount() {
+    const username = document.getElementById('m-user').value.replace('@', '');
+    const sid = document.getElementById('m-sid').value;
+    if (!username || !sid) return toast('أدخل جميع البيانات', false);
 
-            // Change button to Verify mode
-            btnEl.innerHTML = 'تأكيد المتابعة (Verify)';
-            btnEl.className = 'px-5 py-3 bg-yellow-400 text-black font-black text-[10px] rounded-xl animate-pulse';
+    const btn = document.getElementById('link-btn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري الربط...';
+    try {
+        await API.addAccount(username, sid);
+        await loadUser();
+        closeModal();
+        toast(`تم ربط @${username} بنجاح!`);
+        go('profile');
+    } catch (e) {
+        toast('فشل الربط: ' + e.message, false);
+    } finally {
+        btn.innerHTML = 'ربط الآن';
+    }
+}
 
-            btnEl.onclick = async () => {
-                btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-                btnEl.disabled = true;
-                try {
-                    const result = await API.earnFollow(account.id, targetUsername);
-                    if (result.success) {
-                        user.coins = result.newCoins;
-                        btnEl.innerHTML = '✓ تم التحقق';
-                        btnEl.onclick = null;
-                        btnEl.className = 'px-5 py-3 bg-green-500/20 text-green-400 font-black text-[10px] rounded-xl cursor-default';
-                        toast("تمت المتابعة! +10 نقاط 💰");
-                        updateStats(); // Update UI coins
-                    } else {
-                        btnEl.innerHTML = 'إعادة التحقق';
-                        btnEl.disabled = false;
-                        toast(result.message, false);
-                    }
-                } catch (e) {
-                    btnEl.innerHTML = 'خطأ';
-                    btnEl.disabled = false;
-                    toast(e.message, false);
-                }
-            };
-        }
+async function doFollow(targetUsername, btnEl) {
+    if (!user || user.accounts.length === 0) return toast('اربط حساب أولاً', false);
+    const account = user.accounts[0];
 
-        async function doRedeem(amount) {
-            if (!user || user.accounts.length === 0) return toast('اربط حساب أولاً', false);
-            const cost = amount * 5;
-            if (user.coins < cost) return toast(`تحتاج ${cost} نقطة، رصيدك ${user.coins}`, false);
+    // Direct Manual Follow Flow
+    toast("جاري فتح حساب @" + targetUsername);
+    window.open(`https://www.tiktok.com/@${targetUsername}`, '_blank');
 
-            if (!confirm(`هل تريد شراء ${amount} متابع حقيقي مقابل ${cost} نقطة؟`)) return;
+    // Change button to Verify mode
+    btnEl.innerHTML = 'تأكيد المتابعة (Verify)';
+    btnEl.className = 'px-5 py-3 bg-yellow-400 text-black font-black text-[10px] rounded-xl animate-pulse';
 
-            try {
-                const result = await API.redeem(user.accounts[0].id, amount);
+    btnEl.onclick = async () => {
+        btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        btnEl.disabled = true;
+        try {
+            const result = await API.earnFollow(account.id, targetUsername);
+            if (result.success) {
                 user.coins = result.newCoins;
-                toast(result.message);
-                go('shop');
-            } catch (e) {
-                toast(e.message, false);
-            }
-        }
-
-        // ─── Load User Data ───
-        async function loadUser() {
-            try {
-                user = await API.me();
-            } catch (e) {
-                user = null;
-            }
-        }
-
-        // ─── Init ───
-        (async () => {
-            if (isLoggedIn()) {
-                await loadUser();
-                go('home');
+                btnEl.innerHTML = '✓ تم التحقق';
+                btnEl.onclick = null;
+                btnEl.className = 'px-5 py-3 bg-green-500/20 text-green-400 font-black text-[10px] rounded-xl cursor-default';
+                toast("تمت المتابعة! +10 نقاط 💰");
+                updateStats(); // Update UI coins
             } else {
-                go('login');
+                btnEl.innerHTML = 'إعادة التحقق';
+                btnEl.disabled = false;
+                toast(result.message, false);
             }
-        })();
+        } catch (e) {
+            btnEl.innerHTML = 'خطأ';
+            btnEl.disabled = false;
+            toast(e.message, false);
+        }
+    };
+}
+
+async function doRedeem(amount) {
+    if (!user || user.accounts.length === 0) return toast('اربط حساب أولاً', false);
+    const cost = amount * 5;
+    if (user.coins < cost) return toast(`تحتاج ${cost} نقطة، رصيدك ${user.coins}`, false);
+
+    if (!confirm(`هل تريد شراء ${amount} متابع حقيقي مقابل ${cost} نقطة؟`)) return;
+
+    try {
+        const result = await API.redeem(user.accounts[0].id, amount);
+        user.coins = result.newCoins;
+        toast(result.message);
+        go('shop');
+    } catch (e) {
+        toast(e.message, false);
+    }
+}
+
+// ─── Load User Data ───
+async function loadUser() {
+    try {
+        user = await API.me();
+    } catch (e) {
+        user = null;
+    }
+}
+
+// ─── Init ───
+(async () => {
+    if (isLoggedIn()) {
+        await loadUser();
+        go('home');
+    } else {
+        go('login');
+    }
+})();
